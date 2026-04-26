@@ -9,6 +9,11 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import json
+import time
+import uuid
+from pathlib import Path
+import importlib.util
 
 # ==== CONFIG ====
 st.set_page_config(
@@ -87,6 +92,24 @@ CORES = {
     "USD":    "#595959",
 }
 
+DEBUG_LOG_PATH = Path("/Users/victorkoerich/Downloads/Indexadores/.cursor/debug-909e51.log")
+DEBUG_SESSION_ID = "909e51"
+DEBUG_RUN_ID = f"run_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+
+
+def debug_log(hypothesis_id, location, message, data):
+    payload = {
+        "sessionId": DEBUG_SESSION_ID,
+        "runId": DEBUG_RUN_ID,
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(time.time() * 1000),
+    }
+    with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
 # ==== DATA LOAD ====
 @st.cache_data
 def load_data():
@@ -147,7 +170,16 @@ selecionados = st.sidebar.multiselect(
 visualizacao = st.sidebar.radio(
     "Visualização",
     ["Variação anual", "Acumulado ao longo dos anos", "Tabela anual"],
+    index=1,
 )
+# region agent log
+debug_log(
+    "H2",
+    "app_indexadores.py:164",
+    "Visualizacao selecionada",
+    {"visualizacao": visualizacao},
+)
+# endregion
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(
@@ -235,7 +267,7 @@ if visualizacao == "Variação anual":
     )
     fig.update_yaxes(ticksuffix="%")
     fig.update_xaxes(type="category")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     # Estatísticas anuais
     st.subheader("Estatísticas anuais (no período selecionado)")
@@ -252,7 +284,7 @@ if visualizacao == "Variação anual":
     }).T
     st.dataframe(
         est.style.format(lambda v: f"{fmt_br(v, 2, sinal=True)}%").background_gradient(cmap="RdYlGn_r", axis=0),
-        use_container_width=True,
+        width='stretch',
     )
 
 elif visualizacao == "Acumulado ao longo dos anos":
@@ -287,7 +319,7 @@ elif visualizacao == "Acumulado ao longo dos anos":
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
     )
     fig.update_xaxes(type="category")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     st.subheader("Quanto R$ 100,00 viraria?")
     last = acum.iloc[-1]
@@ -304,23 +336,55 @@ elif visualizacao == "Acumulado ao longo dos anos":
     st.markdown("\n".join(html), unsafe_allow_html=True)
 
 else:  # Tabela anual
+    # region agent log
+    debug_log(
+        "H2",
+        "app_indexadores.py:329",
+        "Entrou na branch Tabela anual",
+        {"selected_count": len(selecionados), "indexadores": selecionados},
+    )
+    # endregion
+    # region agent log
+    debug_log(
+        "H1",
+        "app_indexadores.py:337",
+        "Disponibilidade matplotlib via importlib",
+        {"matplotlib_spec_found": bool(importlib.util.find_spec("matplotlib"))},
+    )
+    # endregion
     st.subheader("Tabela anual — variação (%) e acumulado")
     tab = df_anual.rename(columns=NICE).copy()
     acum_tab = ((1 + df_anual/100).cumprod() - 1) * 100
     acum_tab = acum_tab.rename(columns={c: f"{NICE[c]} (acum.)" for c in selecionados})
     tab_final = pd.concat([tab, acum_tab], axis=1)
-    # reorder: variação e acumulado lado a lado
-    ordem = []
-    for c in selecionados:
-        ordem.append(NICE[c])
-        ordem.append(f"{NICE[c]} (acum.)")
+    # reorder: primeiro todas as variações anuais, depois os acumulados
+    ordem = [NICE[c] for c in selecionados] + [f"{NICE[c]} (acum.)" for c in selecionados]
     tab_final = tab_final[ordem]
 
-    st.dataframe(
-        tab_final.style.format(lambda v: f"{fmt_br(v, 2, sinal=True)}%").background_gradient(cmap="RdYlGn_r", axis=None),
-        use_container_width=True,
-        height=520,
-    )
+    try:
+        st.dataframe(
+            tab_final.style.format(lambda v: f"{fmt_br(v, 2, sinal=True)}%").background_gradient(cmap="RdYlGn_r", axis=None),
+            width='stretch',
+            height=520,
+        )
+        # region agent log
+        debug_log(
+            "H1",
+            "app_indexadores.py:358",
+            "st.dataframe com Styler executado sem erro",
+            {"rows": int(tab_final.shape[0]), "cols": int(tab_final.shape[1])},
+        )
+        # endregion
+    except Exception as e:
+        # region agent log
+        debug_log(
+            "H1",
+            "app_indexadores.py:367",
+            "Erro ao renderizar st.dataframe com Styler",
+            {"error_type": type(e).__name__, "error_message": str(e)},
+        )
+        # endregion
+        raise
 
     # Download
     csv = df_anual.to_csv(index=True).encode("utf-8")
@@ -357,7 +421,7 @@ fig_bar.update_layout(
     showlegend=False,
 )
 fig_bar.update_xaxes(ticksuffix="%")
-st.plotly_chart(fig_bar, use_container_width=True)
+st.plotly_chart(fig_bar, width='stretch')
 
 st.markdown("---")
 st.caption(
