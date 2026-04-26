@@ -189,6 +189,7 @@ selecionados = st.sidebar.multiselect(
 visualizacao = st.sidebar.radio(
     "Visualização",
     ["Variação anual", "Acumulado ao longo dos anos", "Tabela anual"],
+    index=1,
 )
 # region agent log
 debug_log(
@@ -386,11 +387,9 @@ else:  # Tabela anual
     acum_tab = ((1 + df_anual/100).cumprod() - 1) * 100
     acum_tab = acum_tab.rename(columns={c: f"{NICE[c]} (acum.)" for c in selecionados})
     tab_final = pd.concat([tab, acum_tab], axis=1)
-    # reorder: variação e acumulado lado a lado
-    ordem = []
-    for c in selecionados:
-        ordem.append(NICE[c])
-        ordem.append(f"{NICE[c]} (acum.)")
+    # reorder: primeiro todas as variações anuais, depois todos os acumulados
+    ordem = [NICE[c] for c in selecionados]
+    ordem += [f"{NICE[c]} (acum.)" for c in selecionados]
     tab_final = tab_final[ordem]
 
     st.dataframe(
